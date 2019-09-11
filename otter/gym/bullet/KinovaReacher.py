@@ -25,19 +25,37 @@ from ..gym_wrapper import GymWrapper
 
 __all__ = [ 'ImageKinovaReacherXYZEnv']
 
+X_HIGH = 0.3
+X_LOW = -0.3
+Y_HIGH = -0.3
+Y_LOW = -0.85
+Z_HIGH = 0.6
+Z_LOW = 0.2
+
 class ImageKinovaReacherXYZ(KinovaXYZ):
-    def __init__(self, **kwargs):
+    def __init__(self,
+                 random_target=False,
+                 default_goal=(0.2, -0.8, 0.25),
+                 **kwargs,
+                 ):
+
+        self._random_target = random_target
+        self._default_target_positon = default_goal
         KinovaXYZ.__init__(self,  **kwargs)
 
     def reset(self):
+        obs = super().reset()
         self.goal_point = self.get_target_pos()
-        print('reset goal point:', self.goal_point)
-        return  super().reset()
-
-
+        self._p.resetBasePositionAndOrientation(self.targetUid, self.goal_point, [0, 0, 0, 1])
+        return  obs
+    def build_env(self):
+        self.targetUid = p.loadURDF(os.path.join(self._robot_urdfRoot, "urdf/ball.urdf"),
+                                    self._default_target_positon,
+                                    [0, 0, 0, 1],
+                                    useFixedBase=True)
     def get_target_pos(self):
         if self._random_target:
-            goal_point = np.array([self.np_random.uniform(-0.2, 0.2), self.np_random.uniform(-0.2, 0.2)])
+            goal_point = np.array([self.np_random.uniform(-0.2, 0.2), self.np_random.uniform(-0.85, -0.75), 0.25])
         else:
             goal_point = np.array(self._default_goal)
         return  goal_point
@@ -58,7 +76,7 @@ class ImageKinovaReacherXYZEnv(GymWrapper):
     environment_name = 'ImageKinovaReacherXYZEnv-v0'
     entry_point = "otter.gym.bullet.KinovaReacher:ImageKinovaReacherXYZ"
     max_episode_steps = 1000
-    reward_threshold = -3.75
+    reward_threshold = 5000
 
     def __init__(self, **kwargs):
         config = {

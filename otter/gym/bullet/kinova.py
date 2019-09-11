@@ -20,6 +20,9 @@ INIT_ENDEFFORTANGLE = 0
 KINOVA_HOME_EE_POS = (0.092, -0.443, 0.369)
 KINOVA_HOME_EE_ORN = (0.727, -0.01, 0.029, 0.686)
 
+
+MAX_VELOCITY = 0.35
+
 INIT_CONFIGURATION =  [math.pi/2, math.pi, math.pi, math.pi/6, 0, math.pi/2, 0, 1, 1, 1]
 
 X_HIGH = 0.3
@@ -47,6 +50,8 @@ class Kinova:
 
                hand_low= (X_LOW, Y_LOW, Z_LOW),
                hand_high = (X_HIGH, Y_HIGH, Z_HIGH),
+               basePosition = ( -0.000000, 0.000000, 0.000000 ),
+               baseOrientationEuler = (0.000000, 0.000000, 0)
                ):
 
     self.robot_type = robot_type
@@ -56,8 +61,8 @@ class Kinova:
 
 
     # the initial position of robot wrt world space. I suggest the positon be set to zero so that the local space is equvelent to the world space. It's convienent for inverse kinematics.
-    self._basePosition = [-0.000000, 0.000000, 0.000000]
-    self._baseOrientation = self._pybullet_client.getQuaternionFromEuler([0.000000, 0.000000, 0])
+    self._basePosition = basePosition
+    self._baseOrientation = self._pybullet_client.getQuaternionFromEuler(baseOrientationEuler)
     self._init_jointPositions = init_configuration
 
 
@@ -79,7 +84,7 @@ class Kinova:
 
    # kinova parameters
     self.maxForce = 30.
-    self.max_velocity = 0.35
+    self.max_velocity = MAX_VELOCITY
 
     self.fingerAForce = 2
     self.fingerBForce = 2.5
@@ -100,7 +105,7 @@ class Kinova:
     # restposes for null space
     self.rp = [1.1, 2.8, -3.2, 0.6, -0.505, 1.9, 0.12, 0.01, 0.01, 0.01]
     #joint damping coefficents
-    self.jd = [5, 5, 5, 5, 5, 5, 5, 0.01,0.01,0.01]
+    self.jd = [5, 5, 5, 5, 5, 5, 5, 0.01, 0.01,   0.01]
 
     # setting the workspace wrt ee
     self.ee_X_upperLimit = hand_high[0]
@@ -138,7 +143,8 @@ class Kinova:
     if reload_urdf:
       self.kinovaUid = self._pybullet_client.loadURDF(
                           os.path.join(self.urdfRootPath,"urdf/j2s7s300.urdf"),
-                          self._basePosition,self._baseOrientation,
+                          self._basePosition,
+                          self._baseOrientation,
                           useFixedBase=self._is_fixed,
                           flags=self._pybullet_client.URDF_USE_SELF_COLLISION)
 
@@ -242,18 +248,51 @@ class Kinova:
         controlMode=self._pybullet_client.TORQUE_CONTROL,
         force=torque)
 
-  def _SetDesiredMotorAngleById(self, motor_id, desired_angle, max_velocity = None):
+  def _SetDesiredMotorAngleById(self, motor_id, desired_angle, desired_vel=None, max_velocity = None):
+    #if max_velocity is None:
+    #    max_velocity = self.jointMaxVelocity[motor_id]
+    if desired_vel is None:
+      self._pybullet_client.setJointMotorControl2(
+          bodyIndex=self.kinovaUid,
+          jointIndex=motor_id,
+          controlMode=self._pybullet_client.POSITION_CONTROL,
+          targetPosition=desired_angle,
+          positionGain= 1,
+          velocityGain= 0.1,
+          maxVelocity = 1,#self.max_velocity,
+          force=self.maxForce)
+    else:
+      self._pybullet_client.setJointMotorControl2(
+        bodyIndex=self.kinovaUid,
+        jointIndex=motor_id,
+        controlMode=self._pybullet_client.POSITION_CONTROL,
+        targetPosition=desired_angle,
+        targetVelocity = desired_vel,
+        positionGain=0.5,
+        velocityGain=0.1,
+        maxVelocity=1,  # self.max_velocity,
+        force=self.maxForce)
+
+  def _SetDesiredMotorVelocityById(self, motor_id, desired_vel, max_velocity = None):
     #if max_velocity is None:
     #    max_velocity = self.jointMaxVelocity[motor_id]
     self._pybullet_client.setJointMotorControl2(
         bodyIndex=self.kinovaUid,
         jointIndex=motor_id,
-        controlMode=self._pybullet_client.POSITION_CONTROL,
-        targetPosition=desired_angle,
-        positionGain= 0.5,
-        velocityGain= 1,
-        maxVelocity = 1,#self.max_velocity,
+        controlMode=self._pybullet_client.VELOCITY_CONTROL,
+        targetVelocity = desired_vel,
+
+        maxVelocity = self.max_velocity, #self.max_velocity,
         force=self.maxForce)
+
+  def _SetDesiredMotorTorqueById(self, motor_id, desired_torque, max_velocity=None):
+    # if max_velocity is None:
+    #    max_velocity = self.jointMaxVelocity[motor_id]
+    self._pybullet_client.setJointMotorControl2(
+      bodyIndex=self.kinovaUid,
+      jointIndex=motor_id,
+      controlMode=self._pybullet_client.TORQUE_CONTROL,
+      force=desired_torque)
 
   def GetActionDimension(self):
     if (self.useInverseKinematics):
@@ -531,6 +570,72 @@ class Kinova:
         motor_id = self.motorIndices[i]
         self._SetDesiredMotorAngleById(motor_id, commands[i])
 
+  def CheckEEpos(self):
+    ee_pos, ee_orn = self.GetEndEffectorObersavations()
+
+    if ee_pos[0]  >  self.ee_X_upperLimit or ee_pos[0] < self.ee_X_lowerLimit:
+      return True
+    if ee_pos[1]  >  self.ee_Y_upperLimit or ee_pos[1] < self.ee_Y_lowerLimit:
+      return True
+    if ee_pos[2]  >  self.ee_Z_upperLimit or ee_pos[2] < self.ee_Z_lowerLimit:
+      return True
+
+    return False
+
+
+  def ApplyAction_Velocity(self, commands):
+    """
+    :param commands:
+
+    """
+    if np.array(commands).size != 10:
+      raise Exception("Command size is not matched, require a command with the size of 8 but got ",
+                      np.array(commands).size)
+
+    for i in range (self.numMotors - self.numFingers):
+      motor_id = self.motorIndices[i]
+      self._SetDesiredMotorVelocityById(motor_id, commands[i])
+
+    #fingers
+    for i in range(self.numFingers):
+      fingerAngle = commands[-self.numFingers +i]
+      finger_id = self.motorIndices[self.numMotors - self.numFingers + i]
+      self._pybullet_client.setJointMotorControl2(self.kinovaUid,finger_id,
+                                                  self._pybullet_client.POSITION_CONTROL,
+                                                  targetPosition= fingerAngle,
+                                                  force=self.fingerTipForce)
+
+
+  def Enable_Torque_mode(self):
+    for i in range(self.numMotors - self.numFingers):
+      motor_id = self.motorIndices[i]
+      maxForce = 0
+      mode = p.VELOCITY_CONTROL
+      p.setJointMotorControl2(self.kinovaUid, motor_id,
+                              controlMode=mode, force=maxForce)
+
+  def ApplyAction_Torque(self, commands):
+    """
+    :param commands:
+
+
+    """
+    if np.array(commands).size != 10:
+      raise Exception("Command size is not matched, require a command with the size of 10 but got ",
+                      np.array(commands).size)
+
+    for i in range (self.numMotors - self.numFingers):
+      motor_id = self.motorIndices[i]
+      self._SetDesiredMotorTorqueById(motor_id, commands[i])
+
+    #fingers
+    for i in range(self.numFingers):
+      fingerAngle = commands[-self.numFingers +i]
+      finger_id = self.motorIndices[self.numMotors - self.numFingers + i]
+      self._pybullet_client.setJointMotorControl2(self.kinovaUid,finger_id,
+                                                  self._pybullet_client.POSITION_CONTROL,
+                                                  targetPosition= fingerAngle,
+                                                  force=self.fingerTipForce)
   def ApplyAction_EndEffectorPose(self, commands):
     if (self.useInverseKinematics):
       if np.array(commands).size != 8:
@@ -600,4 +705,5 @@ class Kinova:
 
     else:
       raise Exception("You must set \'useInverseKinematics==True\' in the ApplyAction_EndEffectorPose function.")
-      
+
+

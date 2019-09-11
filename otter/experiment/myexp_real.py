@@ -11,8 +11,11 @@ import otter.gym as gym
 # import parasol.model
 import sys
 from .common import Experiment
+
+
+
 sys.path.append('/opt/ros/kinetic/lib/python2.7/dist-packages')
-import ROS.src.otter_kinova_grasping.otter_kinova_grasping.scripts.kinova_cup as kc
+import ros.src.otter_kinova_grasping.otter_kinova_grasping.scripts.kinova_cup as kc
 
 gfile = tf.gfile
 
@@ -53,7 +56,7 @@ class Myexp_real(Experiment):
         if not gfile.Exists(out_dir / "data"):
             gfile.MakeDirs(out_dir / "data")
 
-        self.env = kc.CupAgentROS()
+        self.env = kc.ROSImageKinovaCupPusherEnv()
         self.initialize_params()
 
         print('initializing the experiment..')
@@ -122,7 +125,7 @@ class Myexp_real(Experiment):
                                        smooth=self.data_params['smooth_noise'])
 
         num_rollouts = self.data_params['num_rollouts']
-        policy = lambda noise: noise
+        policy = lambda _, __, ___, noise: noise
 
         rollouts = self.env.rollouts(num_rollouts, self.horizon, policy=policy, noise=noise_function, show_progress=True, )
 

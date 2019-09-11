@@ -165,7 +165,7 @@ class ImageKinovaCupPusherEnv(GymWrapper):
         if config['image'] is True:
             config['isImageObservation'] = True
             config['image_height'] = config['image_width'] = config['image_dim']
-        super(ImageKinovaCupPusherEnv, self).__init__(config)
+        super(ImageKinovaCupPusherEnv, self).__init__(config)#TODO check param transfer
 
     def torque_matrix(self):
         return 2 * np.eye(self.get_action_dim())

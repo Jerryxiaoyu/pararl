@@ -7,6 +7,12 @@
       <contact_cfm value="0.1"/>
       <contact_erp value="1.0"/>
     </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.15"/>
+
+       <inertia ixx="0.001255" ixy="-0.000045" ixz="-0.000001" iyy="0.001003" iyz="0.000003" izz="0.001381"/>
+    </inertial>
 
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0.6"/>

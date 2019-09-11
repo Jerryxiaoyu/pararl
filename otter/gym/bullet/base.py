@@ -86,7 +86,7 @@ class KinovaXYZ(gym.Env, metaclass=abc.ABCMeta,):
                  multi_view = False,
                  hard_reset = True,
                  isImageObservation = True,
-                 #random_target=False,
+
                  default_goal = (0,0,0),
                  random_init_arm_angle = False,
                  state_vis = False,
@@ -238,12 +238,8 @@ class KinovaXYZ(gym.Env, metaclass=abc.ABCMeta,):
                                        [0.000000, 0.000000, 0.0, 1.0],
                                       useFixedBase=True)
 
+            p.changeDynamics(self.tableUid, 0, lateralFriction = 1.0, spinningFriction = 1.0, rollingFriction= 1.0)
             print('fiction of table :', p.getDynamicsInfo(self.tableUid, -1))
-            #p.changeDynamics( self.tableUid, -1, contactStiffness=1., contactDamping=1)
-            # self.cubeUid = p.loadURDF(os.path.join(self._robot_urdfRoot, "urdf/Cube.urdf"),
-            #                           [0.0, -0.55, -0.15],
-            #                           [0, 0, 0, 1],
-            #                           useFixedBase=True)
 
             self.build_env()
             p.setGravity(0, 0, -9.81)
@@ -274,7 +270,7 @@ class KinovaXYZ(gym.Env, metaclass=abc.ABCMeta,):
                     nearVal=0.1, farVal=100.0)
 
             self.robot_init_pos = self.get_init_joint_angle()
-            #self.goal_point = self.get_target_pos()
+
 
             # load the kinova
             self.kinova = kinova.Kinova(p,  robot_type='j2s7s300',
@@ -296,9 +292,8 @@ class KinovaXYZ(gym.Env, metaclass=abc.ABCMeta,):
         self.terminated = 0
         self._envStepCounter = 0
 
-
         self.kinova.useInverseKinematics = False
-        INIT_RESET_STEPS = 500
+        INIT_RESET_STEPS = 100
         for i in range(INIT_RESET_STEPS):
             action = self.robot_init_pos
             self.kinova.ApplyAction(action)
@@ -313,19 +308,10 @@ class KinovaXYZ(gym.Env, metaclass=abc.ABCMeta,):
             #start_pos = np.random.uniform(low=-np.pi, high=np.pi, size=self.model.nq)
             raise print('random function is not completed!')
         else:
-
-            #start_pos = [-4.54, 3.438, 9.474, 0.749, 4.628, 4.472, 5.045, 1, 1, 1]
-            #start_pos = [-7.624, 2.814, 12.568, 0.758, -1.647, 4.492, 5.025, 1, 1, 1] # home position
             start_pos = KINOVA_HOME_ANGLE
 
         return start_pos
 
-    # def get_target_pos(self):
-    #     if self._random_target:
-    #         self.goal_point = np.array([self.np_random.uniform(-0.2, 0.2), self.np_random.uniform(-0.2, 0.2)])
-    #     else:
-    #         self.goal_point = np.array(self._default_goal)
-    #     return self.goal_point
 
     def __del__(self):
         p.disconnect()
@@ -335,15 +321,11 @@ class KinovaXYZ(gym.Env, metaclass=abc.ABCMeta,):
         return [seed]
 
     def _get_obs(self):
-
-
-
         if self._isImageObservation:
             img = self.render("rgb_array")
 
-            self._observation = (cv2.resize(img, (self._image_width, self._image_height), interpolation=cv2.INTER_LINEAR) / 255).flatten()
-
-
+            self._observation = (cv2.resize(img, (self._image_width, self._image_height),
+                                            interpolation= cv2.INTER_LINEAR) / 255).flatten()
         else:
             kinovaState = self.kinova.GetObservation()
             self._observation = \
@@ -352,10 +334,9 @@ class KinovaXYZ(gym.Env, metaclass=abc.ABCMeta,):
         return self._observation
 
     def step(self, action):
-
         t1 = time.time()
         finger_angle = [0.0]  # Close the gripper
-        orn = KINOVA_HOME_EE_ORN#[0.708, -0.019, 0.037, 0.705]
+        orn = KINOVA_HOME_EE_ORN
 
         if (self._isDiscrete):
             if self._isAbsolute_control:
@@ -401,7 +382,6 @@ class KinovaXYZ(gym.Env, metaclass=abc.ABCMeta,):
 
         if self._renders:
             time.sleep(0.001)
-            #time.sleep(self._timeStep*self._actionRepeat)
             if self._renders is True and self._envStepCounter % 5 == 0:
                 self.debug_ino_step = self._p.addUserDebugText('step: %d' % self._envStepCounter, [-0.8, 0, 0.0],
                                                            textColorRGB=[1, 0, 0], textSize=1.5, replaceItemUniqueId=self.debug_ino_step)

@@ -16,6 +16,10 @@ import actionlib_msgs.msg
 import msgs.msg
 import msgs.srv
 
+import sys
+print(sys.version)
+print('--------------------------------------------')
+
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 
@@ -46,15 +50,18 @@ from contextlib import contextmanager
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 grandgrandparentdir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(currentdir))))
 
+
+
 IMAGE_WIDTH = 128
-STATE_DIM = 3*IMAGE_WIDTH*IMAGE_WIDTH  #TODO
+IMAGE_HEIGHT = 128
+STATE_DIM = 3*IMAGE_HEIGHT*IMAGE_WIDTH  #TODO
 CROP_SIZE = 360
 
 KINOVA_HOME_ANGLE = [4.543, 3.370, -0.264, 0.580, 2.705, 4.350, 6.425, 0, 0,0 ]
 KINOVA_HOME_XYZ = (0.09, -0.446, 0.375)
 KINOVA_HOME_ORIENTATION = (0.708, -0.019, 0.037, 0.705)
 KINOVA_LIMIT = [-0.1, 0.2, -0.7, -0.4, 0.365, 0.465]
-K = 0.02        # velocity parameter v = K*input(from -1 to 1)m/s
+
 
 def policy1(stat):
     act = [1, 1, 1]
@@ -62,8 +69,9 @@ def policy1(stat):
     print('---')
     print(act)
     return act
+bridge = CvBridge()
 
-@six.add_metaclass(ABCMeta)
+#@six.add_metaclass(ABCMeta)
 class AgentROSbase(object):
     class RollOutData:
         image = []
@@ -91,23 +99,33 @@ class AgentROSbase(object):
     stat = []
     rollout_temp = RollOutData()
 
+
     def __init__(self,
-                 sliding_window= 0,
-                 control_rate = 1,
-                 is_VelControl=True,):
+                 
+                 control_rate = 10.0,
+                 is_VelControl=True,
+                 sliding_window=0,
+
+                 image_width = IMAGE_WIDTH,
+                 image_height= IMAGE_HEIGHT,
+                 **kwargs):
+
+        self._image_height = image_height
+        self._image_width = image_width
 
         self.control_rate = control_rate
         self.currently_logging = False
         self.sliding_window = sliding_window
         self.is_VelControl = is_VelControl
 
-        rospy.init_node('agent_ros_node')
+        rospy.init_node('kinova_agent_node')
         self._init_pubs_and_subs()
 
+        print(' rate :', self.control_rate)
+        self.r = rospy.Rate(self.control_rate)
+        self.r.sleep()
+        #bridge = CvBridge()
 
-        r = rospy.Rate(self.control_rate)
-        r.sleep()
-        self.bridge = CvBridge()
 
 
     def _init_pubs_and_subs(self):
@@ -119,23 +137,23 @@ class AgentROSbase(object):
         # rospy.Subscriber('/j2s7s300_driver/out/joint_angles', kinova_msgs.msg.JointAngles, self.jointangle_callback,
         #                  queue_size=1)
         # if VELOCITY_CONTROL == 1:
-        self.cmd_pub = rospy.Publisher('/agent_ros/position_feed', msgs.msg.ActionCommand, queue_size=1)            # [x y z home]
+        self.cmd_pub = rospy.Publisher('/kinova_agent/position_feed', msgs.msg.ActionCommand, queue_size=1)            # [x y z home]
         # else:
         #     rospy.Subscriber('/target_goal', Float32MultiArray, move_callback_position_control, queue_size=1)
 
     def _init_home_and_limit(self):
-        rospy.wait_for_service('/agent_ros/srv/home_and_limit_range')
+        rospy.wait_for_service('/kinova_agent/srv/home_and_limit_range')
         try:
-            home_limit_req = rospy.ServiceProxy('/agent_ros/srv/home_and_limit_range', msgs.srv.HomeAndLimit)
+            home_limit_req = rospy.ServiceProxy('/kinova_agent/srv/home_and_limit_range', msgs.srv.HomeAndLimit)
             home2 = home_limit_req(KINOVA_HOME_XYZ, KINOVA_HOME_ORIENTATION, KINOVA_LIMIT)
             return home2.done
         except rospy.ServiceException:
             print("Service call failed: %s") # e
 
     def home_client(self):
-        rospy.wait_for_service('/agent_ros/srv/home')
+        rospy.wait_for_service('/kinova_agent/srv/home')
         try:
-            home_req = rospy.ServiceProxy('/agent_ros/srv/home', msgs.srv.Home)
+            home_req = rospy.ServiceProxy('/kinova_agent/srv/home', msgs.srv.Home)
             home1 = home_req(1)
             return home1.done
         except rospy.ServiceException:
@@ -143,13 +161,13 @@ class AgentROSbase(object):
 
 
     def color_callback(self, color_data):
-        original_image = self.bridge.imgmsg_to_cv2(color_data, 'rgb8')
+        original_image =  bridge.imgmsg_to_cv2(color_data, 'rgb8')
 
         # Crop a square out of the middle of the depth and resize it to 300*300
         # self.rollout_temp.image = cv2.resize(original_image[(480 - crop_size) // 2:(480 - crop_size) // 2 + crop_size,
         #                                 (640 - crop_size) // 2:(640 - crop_size) // 2 + crop_size], (IMAGE_WIDTH, IMAGE_WIDTH))
         self.rollout_temp.image = cv2.resize(original_image[0:CROP_SIZE,
-                                        (640 - CROP_SIZE) // 2:(640 - CROP_SIZE) // 2 + CROP_SIZE], (IMAGE_WIDTH, IMAGE_WIDTH))/255
+                                (640 - CROP_SIZE) // 2:(640 - CROP_SIZE) // 2 + CROP_SIZE], (self._image_height, self._image_width))  /255
         # print(type(self.rollout_temp.image))
 
 
@@ -231,7 +249,10 @@ class AgentROSbase(object):
     def _applyAction(self, actions):
 
         #TODO  vel & pos
-        pub_action = [K * i for i in actions]
+        actions = np.clip(actions, -1, 1)
+        pub_action = list(actions)
+
+        #print('action = ', actions)
         self.cmd_pub.publish(msgs.msg.ActionCommand(*pub_action))
 
 
@@ -248,8 +269,7 @@ class AgentROSbase(object):
             def policy(_, t, noise=None):
                 return np.random.normal(size=self.get_action_dim(), scale=init_std)
 
-        #TODO why 10?
-        r = rospy.Rate(10)
+
         states, actions, costs = (
             np.zeros([num_horizon] + [self.get_state_dim()]),
             np.zeros([num_horizon] + [self.get_action_dim()]),
@@ -271,7 +291,8 @@ class AgentROSbase(object):
 
             for k, v in infos.items():
                 infos[k].append(v)
-            r.sleep()
+            self.r.sleep()
+        self.reset()  # Stop robot
         if self.currently_logging:
             log_entry = collections.OrderedDict()
             log_entry['episode_number'] = self.episode_number
